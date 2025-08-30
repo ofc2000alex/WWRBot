@@ -4,28 +4,29 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from discord.ext import commands
 from dotenv import load_dotenv
 
-TargetSheet = "https://docs.google.com/spreadsheets/d/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/export?format=csv&id=1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0&gid=0" #"https://docs.google.com/spreadsheets/d/1scFXT8bjyiqkFjihpbj8n5CpT_5IItA3qZYjP3lkwaY/export?format=csv&id=1scFXT8bjyiqkFjihpbj8n5CpT_5IItA3qZYjP3lkwaY&gid=0"
-
 StartingRowIdentifier = "Date ET"
 UTCColumnIdentifier = "Time (UTC)"
 CommentatorIdentifier = "Commentators"
 TrackerIdentifier = "Trackers"
 
-TestCommentatorRoleID = "<@&1411103550595137536>" # role id for comms
-
-TestTrackerRoleID = "<@&1411103607075635220>" # role id for trackers
-
-TestChannelID = 1409607946786046055 # channel id for #volunteer-chat
-
 load_dotenv()
 token = os.getenv("BotToken")
-WWRVolunteersChatChannelID = int(os.getenv("WWRVolunteerChatChannelID"))
-CommentatorRoleID = os.getenv("CommentatorRoleID")
-TrackerRoleID = os.getenv("TrackerRoleID")
+WWRVolunteersChatChannelID = int(os.getenv("WWRVolunteerChatChannelID")) # channel id for #volunteer-chat
+CommentatorRoleID = os.getenv("CommentatorRoleID") # role id for comms
+TrackerRoleID = os.getenv("TrackerRoleID") # role id for trackers
+TargetSheet = os.getenv("TargetSheet") # sheet to go for
+
+#these were used for testing in a private server
+#TargetSheet = "https://docs.google.com/spreadsheets/d/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/export?format=csv&id=1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0&gid=0"
+#CommentatorRoleID = "<@&1411103550595137536>" 
+#
+#TrackerRoleID = "<@&1411103607075635220>" 
+#
+#WWRVolunteersChatChannelID = 1409607946786046055 
 
 AdvancePingTimeframe = 2 # days before race that it should ping
 
-StoredMatchesFile = os.path.join(os.getcwd(), "StoredMatches.txt")
+StoredMatchesFile = os.path.join(os.path.dirname(os.path.abspath(__file__)), "StoredMatches.txt")
 
 with open(StoredMatchesFile, "r", encoding = "utf-8") as file:
     PingedMatches = file.read().splitlines() # holds all the uuids for matches that already have been pinged. used to check a current row against this list, so that we don't reping every hour. 
@@ -119,20 +120,20 @@ async def CreateDiscordMessage(row, UTCtimestamp):
         if RequiredCommentators <= 0 and RequiredTrackers <= 0:
             return FullMessagetoSend
         elif RequiredCommentators > 0 and RequiredTrackers > 0:
-            FullMessagetoSend += f"{TestCommentatorRoleID} {TestTrackerRoleID} {MatchName} is scheduled for <t:{TimeStamp}:f>, and we need {RequiredCommentators} commentator(s) and {RequiredTrackers} tracker(s).\nPlease sign up using this spreadsheet https://zsr.link/twwrvolunteer"
-        elif RequiredCommentators > 0 and RequiredTrackers < 0:
-            FullMessagetoSend += f"{TestCommentatorRoleID} {MatchName} is scheduled for <t:{TimeStamp}:f>, and we need {RequiredCommentators} commentator(s).\nPlease sign up using this spreadsheet https://zsr.link/twwrvolunteer"
-        elif RequiredCommentators < 0 and RequiredTrackers > 0:
-            FullMessagetoSend += f"{TestTrackerRoleID} {MatchName} is scheduled for <t:{TimeStamp}:f>, and we need {RequiredTrackers} trackers.\nPlease sign up using this spreadsheet https://zsr.link/twwrvolunteer"
+            FullMessagetoSend += f"{CommentatorRoleID} {TrackerRoleID} {MatchName} is scheduled for <t:{TimeStamp}:f>, and we need {RequiredCommentators} commentator(s) and {RequiredTrackers} tracker(s).\nPlease sign up using this spreadsheet: https://zsr.link/twwrvolunteer"
+        elif RequiredCommentators > 0 and RequiredTrackers <= 0:
+            FullMessagetoSend += f"{CommentatorRoleID} {MatchName} is scheduled for <t:{TimeStamp}:f>, and we need {RequiredCommentators} commentator(s).\nPlease sign up using this spreadsheet: https://zsr.link/twwrvolunteer"
+        elif RequiredCommentators <= 0 and RequiredTrackers > 0:
+            FullMessagetoSend += f"{TrackerRoleID} {MatchName} is scheduled for <t:{TimeStamp}:f>, and we need {RequiredTrackers} trackers.\nPlease sign up using this spreadsheet: https://zsr.link/twwrvolunteer"
         return FullMessagetoSend, UUID
 
 @bot.event
 async def on_ready():
-    Scheduler.add_job(CheckSheet, "interval", seconds = 10)
+    Scheduler.add_job(CheckSheet, "interval", hours = 1)
     Scheduler.start()
 
 async def TransmitMessage(DiscordMessage):
-    channel = bot.get_channel(TestChannelID)
-    await channel.send(content = DiscordMessage, embed = None)
+    channel = bot.get_channel(WWRVolunteersChatChannelID)
+    await channel.send(content = DiscordMessage)
 
 bot.run(token)
