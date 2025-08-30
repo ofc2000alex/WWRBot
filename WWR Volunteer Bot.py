@@ -12,21 +12,20 @@ load_dotenv()
 
 CurrentBot = "Main" # Main or Beta, determines the bot input params
 
-match CurrentBot:
-    case "Main":
-        token = os.getenv("BotToken")
-        WWRVolunteersChatChannelID = int(os.getenv("WWRVolunteerChatChannelID")) # channel id for #volunteer-chat
-        CommentatorRoleID = os.getenv("CommentatorRoleID") # role id for comms
-        TrackerRoleID = os.getenv("TrackerRoleID") # role id for trackers
-        TargetSheet = os.getenv("TargetSheet") # sheet to go for
-    case "Beta":
-        token = os.getenv("BetaBotToken")
-        TargetSheet = "https://docs.google.com/spreadsheets/d/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/export?format=csv&id=1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0&gid=0"
-        CommentatorRoleID = "<@&1411103550595137536>" 
-        TrackerRoleID = "<@&1411103607075635220>"
-        WWRVolunteersChatChannelID = 1409607946786046055
-    case _:
-        pass
+if CurrentBot == "Main":
+    token = os.getenv("BotToken")
+    WWRVolunteersChatChannelID = int(os.getenv("WWRVolunteerChatChannelID")) # channel id for #volunteer-chat
+    CommentatorRoleID = os.getenv("CommentatorRoleID") # role id for comms
+    TrackerRoleID = os.getenv("TrackerRoleID") # role id for trackers
+    TargetSheet = os.getenv("TargetSheet") # sheet to go for
+elif CurrentBot == "Beta":
+    token = os.getenv("BetaBotToken")
+    TargetSheet = "https://docs.google.com/spreadsheets/d/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/export?format=csv&id=1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0&gid=0"
+    CommentatorRoleID = "<@&1411103550595137536>" 
+    TrackerRoleID = "<@&1411103607075635220>"
+    WWRVolunteersChatChannelID = 1409607946786046055
+else:
+    pass
 
 ErrorLogChannelID = int(os.getenv("ErrorLogChannelID")) # error logs get put here
 
