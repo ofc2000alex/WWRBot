@@ -107,14 +107,14 @@ async def CreateDiscordMessage(row, UTCtimestamp):
         if not pandas.isna(TrackerText):
             Trackers = TrackerText.replace(" ", "").split(",")
         DoubleDuty = list(set(Commentators) & set(Trackers))
-        RequiredCommentators = VolunteerMinimum - len(Commentators)
+        RequiredCommentators = 2 - len(Commentators) # we really only need 2 commentators at most
         RequiredTrackers = VolunteerMinimum - len(Trackers)
         while len(DoubleDuty) > 0:
             if len(Commentators) > len(Trackers):
                 Commentators.remove(DoubleDuty[0])
             elif len(Commentators) <= len(Trackers): # less people sign up to commentate than track, so we by default just assume the commentator will drop out of tracking
                 Trackers.remove(DoubleDuty[0])
-            RequiredCommentators = VolunteerMinimum - len(Commentators)
+            RequiredCommentators = 2 - len(Commentators)
             RequiredTrackers = VolunteerMinimum - len(Trackers)
             DoubleDuty = list(set(Commentators) & set(Trackers))
         if RequiredCommentators <= 0 and RequiredTrackers <= 0:
