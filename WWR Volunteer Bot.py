@@ -1,4 +1,4 @@
-import pandas, pytz, discord, dotenv, os, sys, traceback, re
+import pandas, pytz, discord, dotenv, os, sys, traceback, re, requests, asyncio
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
@@ -10,7 +10,7 @@ TrackerIdentifier = "Trackers"
 
 load_dotenv()
 
-CurrentBot = "Main" # Main or Beta, determines the bot input params
+CurrentBot = "Main" # Main or Beta, determines the bot input params # change this line if you're swapping between beta and main
 
 if CurrentBot == "Main":
     token = os.getenv("BotToken")
@@ -18,18 +18,24 @@ if CurrentBot == "Main":
     CommentatorRoleID = os.getenv("CommentatorRoleID") # role id for comms
     TrackerRoleID = os.getenv("TrackerRoleID") # role id for trackers
     TargetSheet = os.getenv("TargetSheet") # sheet to go for
+    APIPokeTarget = os.getenv("APIPokeTarget") # sheet to go for, but we poke it with the url to refresh the formulas, fixing the #NAME? problem
 elif CurrentBot == "Beta":
     token = os.getenv("BetaBotToken")
     TargetSheet = "https://docs.google.com/spreadsheets/d/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/export?format=csv&id=1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0&gid=0"
-    CommentatorRoleID = "<@&1411103550595137536>" 
+    CommentatorRoleID = "<@&1411103550595137536>"
     TrackerRoleID = "<@&1411103607075635220>"
     WWRVolunteersChatChannelID = 1409607946786046055
+    APIPokeTarget = "https://sheets.googleapis.com/v4/spreadsheets/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/values/A1?key="
 else:
     pass
 
+APIKey = os.getenv("APIKey")
+
+APIPokeTarget += APIKey
+
 ErrorLogChannelID = int(os.getenv("ErrorLogChannelID")) # error logs get put here
 
-AdvancePingTimeframe = 48 # hours before race that it should ping
+AdvancePingTimeframe = 48 # hours before race that it should ping # change this line if you're swapping between beta and main
 
 StoredMessagesFile = os.path.join(os.path.dirname(os.path.abspath(__file__)), "StoredMessageIDs.txt")
 
@@ -73,6 +79,8 @@ async def CheckSheet():
 
     try:
         global KeyColumnIndexes
+
+        await RefreshSheet() # put a breakpoint here if you want to edit the sheet then have it read it for debugging
 
         RawRaceList = pandas.read_csv(TargetSheet)
 
@@ -129,7 +137,6 @@ async def CreateDiscordMessage(row, UTCtimestamp):
     UUID = str(UTCtimestamp) + str(row.Race) + str(row.Round)
     FullMessagetoSend, RaceObject = "", None
     if UUID not in PingedMatches:
-        PingedMatches.append(UUID)
         MatchName = f"{str(row.Race)} {str(row.Round)}"
         TimeStamp = int(datetime.timestamp(UTCtimestamp))
         RequiredCommentators, RequiredTrackers = await DetermineVolunteerReqs(row)
@@ -142,6 +149,7 @@ async def CreateDiscordMessage(row, UTCtimestamp):
         elif RequiredCommentators <= 0 and RequiredTrackers > 0:
             FullMessagetoSend += f"{TrackerRoleID} {MatchName} is scheduled for <t:{TimeStamp}:f>, and we need {RequiredTrackers} tracker(s).\nPlease sign up using this spreadsheet: <https://zsr.link/twwrvolunteer>"
         RaceObject = ScheduledRace([UUID, MatchName, TimeStamp, RequiredCommentators, RequiredTrackers])
+        PingedMatches.append(UUID)
     else:
         for race in FullRaceList:
             if race.UUID == UUID:
@@ -185,7 +193,7 @@ async def DetermineVolunteerReqs(row):
 
 @bot.event
 async def on_ready():
-    Scheduler.add_job(CheckSheet, "interval", hours = 1)
+    Scheduler.add_job(CheckSheet, "interval", hours = 1) # change this line if you're swapping between beta and main
     Scheduler.start()
 
 async def EditMessage(Race: ScheduledRace, TargetText, NewPersonCount = 0):
@@ -197,16 +205,27 @@ async def EditMessage(Race: ScheduledRace, TargetText, NewPersonCount = 0):
     await UpdateStoredMessageFile(Race)
 
 async def ReplaceOldMessage(OriginalMessage, PersonType, NewPersonCount):
-    RegexPattern = rf"(?:~~(\d+)~~\s*)?(\d+)\s+({PersonType}?)"
+    PersonRegexPattern = rf"(?:~~(\d+)~~\s*)?(\d+)\s+({PersonType}?)"
+    PeriodRegexPattern = r"\.(?=\n)"
 
     def ReplaceVolunteerNum(match):
         StruckthroughNumber = match.group(1)       # old struck number (if exists)
         CurrentNum = int(match.group(2))     # current visible number
         TargetWord = match.group(3)         # tracker(s) or commentator(s)
-        
+
         return f"~~{CurrentNum}~~ {NewPersonCount} {TargetWord}"
 
-    NewMessage = re.sub(RegexPattern, ReplaceVolunteerNum, OriginalMessage, flags=re.IGNORECASE)
+    NewMessage = re.sub(PersonRegexPattern, ReplaceVolunteerNum, OriginalMessage, flags=re.IGNORECASE)
+
+    if PersonType == "commentator":
+        NewRole = CommentatorRoleID
+    elif PersonType == "tracker":
+        NewRole = TrackerRoleID
+
+    if NewRole not in NewMessage:
+        NewMessage = NewRole + " " + NewMessage
+        NewMessage = re.sub(PeriodRegexPattern, f" and {NewPersonCount} {PersonType}(s).", NewMessage)
+        print(NewMessage)
 
     return NewMessage
 
@@ -217,8 +236,11 @@ async def UpdateStoredMessageFile(Race: ScheduledRace):
             if row.split(", ")[5] == f"{Race.messageID}]":
                 rows.remove(row)
     with open(StoredMessagesFile, "w", encoding = "utf-8") as file:
-        file.write("\n".join(rows))
-        file.write("\n")
+        if rows == []:
+            file.write("")
+        else:
+            file.write("\n".join(rows))
+            file.write("\n")
 
 async def TransmitMessage(DiscordMessage):
     channel = bot.get_channel(WWRVolunteersChatChannelID)
@@ -228,5 +250,9 @@ async def TransmitMessage(DiscordMessage):
 async def TransmitError(ErrorMessage):
     channel = bot.get_channel(ErrorLogChannelID)
     await channel.send(content = ErrorMessage)
+
+async def RefreshSheet(): # refreshes the sheet so that formulas have a chance to calculate before we get the values
+    refresh = requests.get(APIPokeTarget)
+    await asyncio.sleep(5)
 
 bot.run(token)
