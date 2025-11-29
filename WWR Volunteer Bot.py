@@ -3,35 +3,38 @@ from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+
 StartingRowIdentifier = "Date ET"
+ETColumnIdentifier = "Time (ET)"
 UTCColumnIdentifier = "Time (UTC)"
 CommentatorIdentifier = "Commentators"
 TrackerIdentifier = "Trackers"
+EasternTimeZone = pytz.timezone("US/Eastern")
 
 load_dotenv()
 
-CurrentBot = "Main" # Main or Beta, determines the bot input params # change this line if you're swapping between beta and main
+CurrentBot = "Beta" # Main or Beta, determines the bot input params # change this line if you're swapping between beta and main
 
 if CurrentBot == "Main":
     token = os.getenv("BotToken")
     WWRVolunteersChatChannelID = int(os.getenv("WWRVolunteerChatChannelID")) # channel id for #volunteer-chat
     CommentatorRoleID = os.getenv("CommentatorRoleID") # role id for comms
     TrackerRoleID = os.getenv("TrackerRoleID") # role id for trackers
-    TargetSheet = os.getenv("TargetSheet") # sheet to go for
-    APIPokeTarget = os.getenv("APIPokeTarget") # sheet to go for, but we poke it with the url to refresh the formulas, fixing the #NAME? problem
+    TargetSheet = os.getenv("TargetSheetWebsite") # url to target
+    APITargetSheet = os.getenv("TargetSheetID") # sheet to target with forced recalculation, part of the TargetSheetWebsite
+    ServiceAcc = os.getenv("MainServiceJSONFilePath") # file path where the service acc credential json is located
 elif CurrentBot == "Beta":
     token = os.getenv("BetaBotToken")
     TargetSheet = "https://docs.google.com/spreadsheets/d/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/export?format=csv&id=1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0&gid=0"
     CommentatorRoleID = "<@&1411103550595137536>"
     TrackerRoleID = "<@&1411103607075635220>"
     WWRVolunteersChatChannelID = 1409607946786046055
-    APIPokeTarget = "https://sheets.googleapis.com/v4/spreadsheets/1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0/values/A1?key="
+    APITargetSheet = "1H19xsapwJxxqxcJU2EbH82zsBqltpYVaQ1I7Kj8Pbp0"
+    ServiceAcc = os.getenv("BetaServiceJSONFilePath")
 else:
     pass
-
-APIKey = os.getenv("APIKey")
-
-APIPokeTarget += APIKey
 
 ErrorLogChannelID = int(os.getenv("ErrorLogChannelID")) # error logs get put here
 
@@ -101,18 +104,22 @@ async def CheckSheet():
         CleanedRaceList = CleanedRaceList.replace(r"\n", " ", regex = True)
 
         DateColumnIndex = CleanedRaceList.columns.get_loc(StartingRowIdentifier) + 1
-        UTCColumnIndex = CleanedRaceList.columns.get_loc(UTCColumnIdentifier) + 1
+        ETColumnIndex = CleanedRaceList.columns.get_loc(ETColumnIdentifier) + 1
         CommentatorIndex = CleanedRaceList.columns.get_loc(CleanedRaceList.columns[CleanedRaceList.columns.str.contains(CommentatorIdentifier, regex=False)][0]) + 1
         TrackerIndex = CleanedRaceList.columns.get_loc(CleanedRaceList.columns[CleanedRaceList.columns.str.contains(TrackerIdentifier, regex=False)][0]) + 1
-        KeyColumnIndexes = [DateColumnIndex, UTCColumnIndex, CommentatorIndex, TrackerIndex]
-
-        CurrentTime = datetime.now(timezone.utc)
+        KeyColumnIndexes = [DateColumnIndex, ETColumnIndex, CommentatorIndex, TrackerIndex]
+        
+        CurrentTime = datetime.now(EasternTimeZone)
         MaxPingTime = CurrentTime + timedelta(hours = AdvancePingTimeframe) 
 
         for row in CleanedRaceList.itertuples():
-            UTCFullDateTime = pytz.utc.localize(datetime.strptime(f"{str(row[DateColumnIndex])} {str(row[UTCColumnIndex])} {datetime.now().year}", "%b %d %H:%M %Y"))
-            if UTCFullDateTime <= MaxPingTime:
-                DiscordMessage, UUID, Race = await CreateDiscordMessage(row, UTCFullDateTime)
+            try:
+                ETFullDateTime = EasternTimeZone.localize(datetime.strptime(f"{str(row[DateColumnIndex])} {str(row[ETColumnIndex])} {datetime.now().year}", "%b %d %I:%M%p %Y"))
+            except:
+                continue
+
+            if ETFullDateTime <= MaxPingTime:
+                DiscordMessage, UUID, Race = await CreateDiscordMessage(row, ETFullDateTime)
                 if DiscordMessage != "" and Race != None:
                     MessageID = await TransmitMessage(DiscordMessage)
                     Race.messageID = MessageID.id
@@ -132,13 +139,13 @@ async def CheckSheet():
         ErrorMessage += f"Code Line: {line_text}\n"
         await TransmitError(ErrorMessage)
                 
-async def CreateDiscordMessage(row, UTCtimestamp):
+async def CreateDiscordMessage(row, ETtimestamp):
     global KeyColumnIndexes, TimeStamp
-    UUID = str(UTCtimestamp) + str(row.Race) + str(row.Round)
+    UUID = str(ETtimestamp) + str(row.Race) + str(row.Round)
     FullMessagetoSend, RaceObject = "", None
     if UUID not in PingedMatches:
         MatchName = f"{str(row.Race)} {str(row.Round)}"
-        TimeStamp = int(datetime.timestamp(UTCtimestamp))
+        TimeStamp = int(datetime.timestamp(ETtimestamp))
         RequiredCommentators, RequiredTrackers = await DetermineVolunteerReqs(row)
         if RequiredCommentators <= 0 and RequiredTrackers <= 0:
             return FullMessagetoSend, UUID, RaceObject
@@ -193,7 +200,7 @@ async def DetermineVolunteerReqs(row):
 
 @bot.event
 async def on_ready():
-    Scheduler.add_job(CheckSheet, "interval", hours = 1) # change this line if you're swapping between beta and main
+    Scheduler.add_job(CheckSheet, "interval", seconds = 5) # change this line if you're swapping between beta and main
     Scheduler.start()
 
 async def EditMessage(Race: ScheduledRace, TargetText, NewPersonCount = 0):
@@ -252,7 +259,18 @@ async def TransmitError(ErrorMessage):
     await channel.send(content = ErrorMessage)
 
 async def RefreshSheet(): # refreshes the sheet so that formulas have a chance to calculate before we get the values
-    refresh = requests.get(APIPokeTarget)
+
+    scope = ['https://www.googleapis.com/auth/spreadsheets']
+
+    credentials = service_account.Credentials.from_service_account_file(ServiceAcc, scopes = scope)
+
+    service = build('sheets', 'v4', credentials = credentials)
+    
+    body = {"values": [[service.spreadsheets().values().get(spreadsheetId = APITargetSheet, range = "Volunteer Signups!K5").execute().get("values", [[""]])[0][0]]]}
+
+    #cell k5 should never be used, so we just tell it to reset itself to being blank (we get the value first just to be sure)
+    result = service.spreadsheets().values().update(spreadsheetId = APITargetSheet, range = 'Volunteer Signups!K5', valueInputOption = 'USER_ENTERED', body = body).execute()
+
     await asyncio.sleep(5)
 
 bot.run(token)
