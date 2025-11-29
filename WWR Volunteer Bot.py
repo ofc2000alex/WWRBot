@@ -15,7 +15,7 @@ EasternTimeZone = pytz.timezone("US/Eastern")
 
 load_dotenv()
 
-CurrentBot = "Beta" # Main or Beta, determines the bot input params # change this line if you're swapping between beta and main
+CurrentBot = "Main" # Main or Beta, determines the bot input params # change this line if you're swapping between beta and main
 
 if CurrentBot == "Main":
     token = os.getenv("BotToken")
@@ -200,7 +200,7 @@ async def DetermineVolunteerReqs(row):
 
 @bot.event
 async def on_ready():
-    Scheduler.add_job(CheckSheet, "interval", seconds = 5) # change this line if you're swapping between beta and main
+    Scheduler.add_job(CheckSheet, "interval", minutes = 5) # change this line if you're swapping between beta and main
     Scheduler.start()
 
 async def EditMessage(Race: ScheduledRace, TargetText, NewPersonCount = 0):
