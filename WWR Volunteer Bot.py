@@ -12,6 +12,7 @@ UTCColumnIdentifier = "Time (UTC)"
 CommentatorIdentifier = "Commentators"
 TrackerIdentifier = "Trackers"
 EasternTimeZone = pytz.timezone("US/Eastern")
+SuccessChatChannelID = 1446553558379139113
 
 load_dotenv()
 
@@ -85,6 +86,8 @@ async def CheckSheet():
 
         await RefreshSheet() # put a breakpoint here if you want to edit the sheet then have it read it for debugging
 
+        await TransmitMessage(f"Sheet successfully refreshed at {datetime.now()}", SuccessChatChannelID)
+
         RawRaceList = pandas.read_csv(TargetSheet)
 
         NewHeaderRowIndex = None
@@ -121,7 +124,8 @@ async def CheckSheet():
             if ETFullDateTime <= MaxPingTime:
                 DiscordMessage, UUID, Race = await CreateDiscordMessage(row, ETFullDateTime)
                 if DiscordMessage != "" and Race != None:
-                    MessageID = await TransmitMessage(DiscordMessage)
+                    MessageID = await TransmitMessage(DiscordMessage, WWRVolunteersChatChannelID)
+                    await TransmitMessage(f"Volunteer notification successfully sent at {datetime.now()}", SuccessChatChannelID)
                     Race.messageID = MessageID.id
                     await Race.StoreMessage()
                     FullRaceList.append(Race)
@@ -137,6 +141,7 @@ async def CheckSheet():
         ErrorMessage += f"File: {filename}\n"
         ErrorMessage += f"Line #: {linenum}\n"
         ErrorMessage += f"Code Line: {line_text}\n"
+        print(ErrorMessage)
         await TransmitError(ErrorMessage)
                 
 async def CreateDiscordMessage(row, ETtimestamp):
@@ -249,8 +254,8 @@ async def UpdateStoredMessageFile(Race: ScheduledRace):
             file.write("\n".join(rows))
             file.write("\n")
 
-async def TransmitMessage(DiscordMessage):
-    channel = bot.get_channel(WWRVolunteersChatChannelID)
+async def TransmitMessage(DiscordMessage, ChannelID):
+    channel = bot.get_channel(ChannelID)
     message = await channel.send(content = DiscordMessage)
     return message
 
