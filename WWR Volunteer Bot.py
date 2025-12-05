@@ -6,6 +6,39 @@ from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
+# taken straight from the python docs
+
+#import linecache
+#import os
+#import tracemalloc
+#
+#def display_top(snapshot, key_type='lineno', limit=10):
+#    snapshot = snapshot.filter_traces((
+#        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+#        tracemalloc.Filter(False, "<unknown>"),
+#    ))
+#    top_stats = snapshot.statistics(key_type)
+#
+#    print("Top %s lines" % limit)
+#    for index, stat in enumerate(top_stats[:limit], 1):
+#        frame = stat.traceback[0]
+#        print("#%s: %s:%s: %.1f KiB"
+#              % (index, frame.filename, frame.lineno, stat.size / 1024))
+#        line = linecache.getline(frame.filename, frame.lineno).strip()
+#        if line:
+#            print('    %s' % line)
+#
+#    other = top_stats[limit:]
+#    if other:
+#        size = sum(stat.size for stat in other)
+#        print("%s other: %.1f KiB" % (len(other), size / 1024))
+#    total = sum(stat.size for stat in top_stats)
+#    print("Total allocated size: %.1f KiB" % (total / 1024))
+#
+#tracemalloc.start()
+
+
+service = None # google sheets api service
 StartingRowIdentifier = "Date ET"
 ETColumnIdentifier = "Time (ET)"
 UTCColumnIdentifier = "Time (UTC)"
@@ -130,6 +163,9 @@ async def CheckSheet():
                     Race.messageID = MessageID.id
                     await Race.StoreMessage()
                     FullRaceList.append(Race)
+
+        #snapshot = tracemalloc.take_snapshot()
+        #display_top(snapshot)
 
     except Exception as error:
         ErrorMessage = ""
@@ -265,12 +301,14 @@ async def TransmitError(ErrorMessage):
     await channel.send(content = ErrorMessage)
 
 async def RefreshSheet(): # refreshes the sheet so that formulas have a chance to calculate before we get the values
+    global service
 
     scope = ['https://www.googleapis.com/auth/spreadsheets']
 
     credentials = service_account.Credentials.from_service_account_file(ServiceAcc, scopes = scope)
-
-    service = build('sheets', 'v4', credentials = credentials)
+    
+    if service is None:
+        service = build('sheets', 'v4', credentials = credentials)
     
     body = {"values": [[service.spreadsheets().values().get(spreadsheetId = APITargetSheet, range = "Volunteer Signups!K5").execute().get("values", [[""]])[0][0]]]}
 
