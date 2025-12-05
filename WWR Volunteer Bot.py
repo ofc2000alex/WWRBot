@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 
-from googleapiclient.discovery import build
+import gspread
 from google.oauth2 import service_account
 
 # taken straight from the python docs
@@ -11,7 +11,7 @@ from google.oauth2 import service_account
 #import linecache
 #import os
 #import tracemalloc
-#
+
 #def display_top(snapshot, key_type='lineno', limit=10):
 #    snapshot = snapshot.filter_traces((
 #        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
@@ -38,7 +38,7 @@ from google.oauth2 import service_account
 #tracemalloc.start()
 
 
-service = None # google sheets api service
+client = None # client api setup
 StartingRowIdentifier = "Date ET"
 ETColumnIdentifier = "Time (ET)"
 UTCColumnIdentifier = "Time (UTC)"
@@ -301,19 +301,20 @@ async def TransmitError(ErrorMessage):
     await channel.send(content = ErrorMessage)
 
 async def RefreshSheet(): # refreshes the sheet so that formulas have a chance to calculate before we get the values
-    global service
+    global client
 
-    scope = ['https://www.googleapis.com/auth/spreadsheets']
-
-    credentials = service_account.Credentials.from_service_account_file(ServiceAcc, scopes = scope)
+    if client is None:
+        scope = ['https://www.googleapis.com/auth/spreadsheets']
+        credentials = service_account.Credentials.from_service_account_file(ServiceAcc, scopes = scope)
+        client = gspread.authorize(credentials)
     
-    if service is None:
-        service = build('sheets', 'v4', credentials = credentials)
-    
-    body = {"values": [[service.spreadsheets().values().get(spreadsheetId = APITargetSheet, range = "Volunteer Signups!K5").execute().get("values", [[""]])[0][0]]]}
+    sheet = client.open_by_key(APITargetSheet)
 
-    #cell k5 should never be used, so we just tell it to reset itself to being blank (we get the value first just to be sure)
-    result = service.spreadsheets().values().update(spreadsheetId = APITargetSheet, range = 'Volunteer Signups!K5', valueInputOption = 'USER_ENTERED', body = body).execute()
+    specificworksheet = sheet.worksheet("Volunteer Signups")
+
+    kfiveget = specificworksheet.acell("K5").value or ""
+
+    specificworksheet.update(range_name = "K5", values = [[kfiveget]])
 
     await asyncio.sleep(5)
 
