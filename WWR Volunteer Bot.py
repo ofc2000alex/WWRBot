@@ -87,7 +87,7 @@ async def CheckSheet():
         await RefreshSheet() # put a breakpoint here if you want to edit the sheet then have it read it for debugging
 
         await TransmitMessage(f"Sheet successfully refreshed at {datetime.now()}", SuccessChatChannelID)
-
+        print(f"Sheet successfully refreshed at {datetime.now()}")
         RawRaceList = pandas.read_csv(TargetSheet)
 
         NewHeaderRowIndex = None
@@ -126,6 +126,7 @@ async def CheckSheet():
                 if DiscordMessage != "" and Race != None:
                     MessageID = await TransmitMessage(DiscordMessage, WWRVolunteersChatChannelID)
                     await TransmitMessage(f"Volunteer notification successfully sent at {datetime.now()}", SuccessChatChannelID)
+                    print(f"Volunteer notification successfully sent at {datetime.now()}")
                     Race.messageID = MessageID.id
                     await Race.StoreMessage()
                     FullRaceList.append(Race)
