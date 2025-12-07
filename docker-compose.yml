@@ -1,0 +1,15 @@
+version: '3.7'
+
+services:
+  wwrbot:
+    image: wwrbot
+    build:
+      context: .
+    command: python -u "WWR Volunteer Bot.py"
+    restart: always
+    ulimits:
+      core:
+        hard: 0
+        soft: 0
+    volumes:
+      - .:/wwrbot
